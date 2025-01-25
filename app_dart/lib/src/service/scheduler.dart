@@ -431,10 +431,50 @@ class Scheduler {
         log.info('Skipping generating the full set of checks for revert request.');
         unlockMergeGroup = true;
       } else {
-        final presubmitTargets = isFusion
-            ? await getTestsForStage(pullRequest, CiStage.fusionEngineBuild)
-            : await getPresubmitTargets(pullRequest);
-        final presubmitTriggerTargets = filterTargets(presubmitTargets, builderTriggerList);
+        final bool canSafelySkipFusionEnginePhase;
+
+        // Targets that must be built/tested.
+        final List<Target> presubmitTriggerTargets;
+        {
+          final List<Target> presubmitTargets;
+          if (isFusion) {
+            canSafelySkipFusionEnginePhase = await _canSafelySkipEnginePhase(
+              slug,
+              pullRequest.number!,
+            );
+            if (canSafelySkipFusionEnginePhase) {
+              // Declare there are no engine builds necessary, and enqueue framework.
+              await initializeCiStagingDocument(
+                firestoreService: firestoreService,
+                slug: slug,
+                sha: sha,
+                stage: CiStage.fusionEngineBuild,
+                tasks: [],
+                checkRunGuard: '$lock',
+              );
+              presubmitTargets = await getTestsForStage(
+                pullRequest,
+                CiStage.fusionTests,
+                includeEngineTests: false,
+              );
+            } else {
+              // Enqueue engine (standard flow).
+              presubmitTargets = await getTestsForStage(
+                pullRequest,
+                CiStage.fusionEngineBuild,
+              );
+            }
+          } else {
+            // Not applicable, in a non-fusion repo we have separate builds anyway.
+            canSafelySkipFusionEnginePhase = false;
+            presubmitTargets = await getPresubmitTargets(pullRequest);
+          }
+
+          presubmitTriggerTargets = filterTargets(
+            presubmitTargets,
+            builderTriggerList,
+          );
+        }
 
         // When running presubmits for a fusion PR; create a new staging document to track tasks needed
         // to complete before we can schedule more tests (i.e. build engine artifacts before testing against them).
@@ -448,9 +488,33 @@ class Scheduler {
             checkRunGuard: '$lock',
           );
         }
+
+        // If have not enqueued engine builds above (because this PR is framework only)
+        // and passes whatever we consider a safety test, then we'll need to instruct
+        // LUCI to use the previous engine artifacts, so for example:
+        //
+        // [master]
+        // abc12345
+        //    |
+        //    |
+        // [pull_request]
+        // def67890 --> .. --> .. --> potentially many commits -> ..
+        //
+        // We'd want to use the base SHA, as we have a guarnatee that every SHA on the
+        // flutter/flutter master branch has engine artifacts available (these were
+        // built during the merge queue that landed the SHA).
+        //
+        // See https://github.com/flutter/flutter/issues/162201.
+        String? flutterPrebuiltEngineVersion;
+        if (canSafelySkipFusionEnginePhase) {
+          assert(isFusion, 'Should be unreachable');
+          flutterPrebuiltEngineVersion = pullRequest.base!.ref;
+        }
+
         await luciBuildService.scheduleTryBuilds(
           targets: presubmitTriggerTargets,
           pullRequest: pullRequest,
+          flutterPrebuiltEngineVersion: flutterPrebuiltEngineVersion,
         );
       }
     } on FormatException catch (error, backtrace) {
@@ -475,6 +539,35 @@ class Scheduler {
     log.info(
       'Finished triggering builds for: pr ${pullRequest.number}, commit ${pullRequest.base!.sha}, branch ${pullRequest.head!.ref} and slug $slug}',
     );
+  }
+
+  @useResult
+  Future<bool> _canSafelySkipEnginePhase(
+    RepositorySlug slug,
+    int pullRequestNumber,
+  ) async {
+    switch (await getFilesChanged.get(slug, pullRequestNumber)) {
+      case InconclusiveFilesChanged(:final reason):
+        log.info('Running engine phase on PR#$pullRequestNumber: $reason');
+        return false;
+      case SuccessfulFilesChanged(:final filesChanged):
+        for (final file in filesChanged) {
+          if (file == 'DEPS') {
+            log.info(
+              'Running engine phase on PR#$pullRequestNumber: DEPS modified',
+            );
+            return false;
+          }
+          if (file.startsWith('engine/')) {
+            log.info(
+              'Running engine phase on PR#$pullRequestNumber: At least one engine source file modified.'
+              '${filesChanged.join('\n')}',
+            );
+            return false;
+          }
+        }
+        return true;
+    }
   }
 
   Future<void> closeCiYamlCheckRun(
@@ -1058,10 +1151,16 @@ $stackTrace
   }
 
   /// Returns the presubmit targets for the fusion repo [pullRequest] that should run for the given [stage].
-  Future<List<Target>> getTestsForStage(PullRequest pullRequest, CiStage stage) async {
+  ///
+  /// If [includeEngineTests] is `false`, only the framework tests are considered part of [CiStage.fusionTests].
+  Future<List<Target>> getTestsForStage(
+    PullRequest pullRequest,
+    CiStage stage, {
+    bool includeEngineTests = true,
+  }) async {
     final presubmitTargets = [
       ...await getPresubmitTargets(pullRequest),
-      ...await getPresubmitTargets(pullRequest, type: CiType.fusionEngine),
+      if (includeEngineTests) ...await getPresubmitTargets(pullRequest, type: CiType.fusionEngine),
     ].where(
       (Target target) => switch (stage) {
         CiStage.fusionEngineBuild => target.value.properties['release_build'] == 'true',
