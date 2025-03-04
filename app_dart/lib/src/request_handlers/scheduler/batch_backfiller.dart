@@ -164,7 +164,7 @@ class BatchBackfiller extends RequestHandler {
     try {
       await retryOptions.retry(
         () async {
-          final pendingTasks = await Future.wait(backfillRequestList(backfill));
+          final pendingTasks = await Future.wait(_backfillRequestList(backfill));
           if (pendingTasks.any((list) => list.isNotEmpty)) {
             final nonEmptyListLength = pendingTasks.where((element) => element.isNotEmpty).length;
             log.info('Backfill fails and retry backfilling $nonEmptyListLength targets.');
@@ -198,7 +198,7 @@ class BatchBackfiller extends RequestHandler {
   }
 
   /// Creates a list of backfill requests.
-  List<Future<List<PendingTask>>> backfillRequestList(List<Tuple<Target, FullTask, int>> backfill) {
+  List<Future<List<PendingTask>>> _backfillRequestList(List<Tuple<Target, FullTask, int>> backfill) {
     return [
       for (final tuple in backfill)
         scheduler.luciBuildService.schedulePostsubmitBuilds(

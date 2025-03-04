@@ -183,65 +183,39 @@ class Scheduler {
     }
 
     final targets = await _computePostsubmitTargetsForCommit(commit);
-
-    final toBeScheduled = <PendingTask>[];
-    for (final target in targets) {
-      final task = Task.fromTarget(commit: commit, target: target);
-
-      // Release branches should run every task
-      final SchedulerPolicy policy;
-      if (Config.defaultBranch(commit.slug) != commit.branch) {
-        policy = GuaranteedPolicy();
-      } else {
-        policy = target.schedulerPolicy;
-      }
-
-      final priority = await policy.triggerPriority(task: task, datastore: datastore);
-      if (priority != null) {
-        // Mark task as in progress to ensure it isn't scheduled over
-        task.status = Task.statusInProgress;
-        toBeScheduled.add(
-          PendingTask(
-            task: task,
-            target: target,
-            priority: priority,
-          ),
-        );
-      }
-    }
+    final tasks = await _computePendingTasksFromTargets(targets, commit: commit);
 
     // Datastore must be written to generate task keys
-    try {
-      final tasks = targets.map((t) => Task.fromTarget(commit: commit, target: t)).toList();
-      log.info('Datastore tasks created for $commit: ${tasks.map((t) => '"${t.name}"').join(', ')}');
-      await datastore.withTransaction((transaction) async {
-        transaction.queueMutations(inserts: [commit]);
-        transaction.queueMutations(inserts: tasks);
-        await transaction.commit();
-        log.fine('Committed ${tasks.length} new tasks for commit ${commit.sha!}');
-      });
-    } catch (error) {
-      log.severe('Failed to add commit ${commit.sha!}: $error');
-    }
+    await datastore.withTransaction((transaction) async {
+      transaction.queueMutations(inserts: [commit]);
+      transaction.queueMutations(inserts: [...tasks.map((t) => t.task)]);
+      await transaction.commit();
+      log.fine('Committed ${tasks.length} tasks for commit ${commit.sha!}');
+    });
+    log.info(
+      'Datastore tasks created for $commit: ${tasks.map((t) => '"${t.target.value.name}"').join(', ')}',
+    );
 
+    final commitDocument = firestore_commmit.commitToCommitDocument(commit);
+    final taskDocuments = firestore.targetsToTaskDocuments(commit, targets);
+    final writes = documentsToWrites([...taskDocuments, commitDocument], exists: false);
+    final firestoreService = await config.createFirestoreService();
+    await firestoreService.writeViaTransaction(writes);
     log.info(
       'Firestore initial targets created for $commit: ${targets.map((t) => '"${t.value.name}"').join(', ')}',
     );
-    final firestore_commmit.Commit commitDocument = firestore_commmit.commitToCommitDocument(commit);
-    final List<firestore.Task> taskDocuments = firestore.targetsToTaskDocuments(commit, targets);
-    final List<Write> writes = documentsToWrites([...taskDocuments, commitDocument], exists: false);
-    final FirestoreService firestoreService = await config.createFirestoreService();
-    // TODO(keyonghan): remove try catch logic after validated to work.
-    try {
-      await firestoreService.writeViaTransaction(writes);
-    } catch (error) {
-      log.warning('Failed to add to Firestore: $error');
-    }
 
-    log.info('Immediately scheduled tasks for $commit: ${toBeScheduled.map((t) => '"${t.task.name}"').join(', ')}');
-    await _batchScheduleBuilds(commit, toBeScheduled);
+    await _batchScheduleBuilds(commit, tasks);
     await _uploadToBigQuery(commit);
+    log.info('Scheduled tasks for $commit: ${tasks.map((t) => '"${t.task.name}"').join(', ')}');
   }
+
+  /// Given a [commit]
+  Future<void> updateCommit(
+    Commit commit, {
+    required List<Target> targets,
+    required List<PendingTask> tasks,
+  }) async {}
 
   /// Given a [commit], returns postsubmit targets.
   ///
@@ -268,6 +242,37 @@ class Scheduler {
       // Note on post submit targets: CiYaml filters out release_true for release branches and fusion trees
     }
     return initialTargets;
+  }
+
+  Future<List<PendingTask>> _computePendingTasksFromTargets(Iterable<Target> targets, {required Commit commit}) async {
+    final results = <PendingTask>[];
+    for (final target in targets) {
+      final task = Task.fromTarget(commit: commit, target: target);
+
+      // Release branches should run every task
+      final SchedulerPolicy policy;
+      if (Config.defaultBranch(commit.slug) != commit.branch) {
+        policy = GuaranteedPolicy();
+      } else {
+        policy = target.schedulerPolicy;
+      }
+
+      final priority = await policy.triggerPriority(task: task, datastore: datastore);
+      if (priority == null) {
+        // A null value means "do not run this".
+        continue;
+      }
+      // Mark task as in progress to ensure it isn't scheduled over
+      task.status = Task.statusInProgress;
+      results.add(
+        PendingTask(
+          task: task,
+          target: target,
+          priority: priority,
+        ),
+      );
+    }
+    return results;
   }
 
   /// Schedule all builds in batch requests instead of a single request.
