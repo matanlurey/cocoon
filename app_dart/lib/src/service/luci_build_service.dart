@@ -13,6 +13,7 @@ import 'package:cocoon_service/src/model/firestore/pr_check_runs.dart';
 import 'package:cocoon_service/src/service/luci_build_service/build_tags.dart';
 import 'package:cocoon_service/src/service/luci_build_service/cipd_version.dart';
 import 'package:cocoon_service/src/service/luci_build_service/engine_artifacts.dart';
+import 'package:cocoon_service/src/service/luci_build_service/pending_task.dart';
 import 'package:cocoon_service/src/service/luci_build_service/user_data.dart';
 import 'package:fixnum/fixnum.dart';
 import 'package:github/github.dart' as github;
@@ -655,9 +656,9 @@ class LuciBuildService {
   ///
   /// Returns empty list if all targets are successfully published to pub/sub. Otherwise,
   /// returns the original list.
-  Future<List<Tuple<Target, Task, int>>> schedulePostsubmitBuilds({
+  Future<List<PendingTask>> schedulePostsubmitBuilds({
     required Commit commit,
-    required List<Tuple<Target, Task, int>> toBeScheduled,
+    required List<PendingTask> toBeScheduled,
   }) async {
     if (toBeScheduled.isEmpty) {
       log.fine(
@@ -668,7 +669,7 @@ class LuciBuildService {
     final List<bbv2.BatchRequest_Request> buildRequests = [];
     // bbv2.BatchRequest_Request batchRequest_Request = bbv2.BatchRequest_Request();
 
-    Set<String> availableBuilderSet;
+    final Set<String> availableBuilderSet;
     try {
       availableBuilderSet = await getAvailableBuilderSet(
         project: 'flutter',
@@ -679,26 +680,26 @@ class LuciBuildService {
       return toBeScheduled;
     }
     log.info('Available builder list: $availableBuilderSet');
-    for (Tuple<Target, Task, int> tuple in toBeScheduled) {
+    for (final pendingTask in toBeScheduled) {
       // Non-existing builder target will be skipped from scheduling.
-      if (!availableBuilderSet.contains(tuple.first.value.name)) {
+      if (!availableBuilderSet.contains(pendingTask.task.builderName)) {
         log.warning(
-          'Found no available builder for ${tuple.first.value.name}, commit ${commit.sha}',
+          'Found no available builder for ${pendingTask.task.builderName}, commit ${commit.sha}',
         );
         continue;
       }
       log.info(
-        'create postsubmit schedule request for target: ${tuple.first.value} in commit ${commit.sha}',
+        'Creating postsubmit schedule request for target: ${pendingTask.target.value} in commit ${commit.sha}',
       );
       final bbv2.ScheduleBuildRequest scheduleBuildRequest = await _createPostsubmitScheduleBuild(
         commit: commit,
-        target: tuple.first,
-        task: tuple.second,
-        priority: tuple.third,
+        target: pendingTask.target,
+        task: pendingTask.task,
+        priority: pendingTask.priority,
       );
       buildRequests.add(bbv2.BatchRequest_Request(scheduleBuild: scheduleBuildRequest));
       log.info(
-        'created postsubmit schedule request for target: ${tuple.first.value} in commit ${commit.sha}',
+        'Created postsubmit schedule request for target: ${pendingTask.target.value} in commit ${commit.sha}',
       );
     }
 
@@ -717,7 +718,7 @@ class LuciBuildService {
       return toBeScheduled;
     }
     log.info('Published a request with ${buildRequests.length} builds');
-    return <Tuple<Target, Task, int>>[];
+    return [];
   }
 
   /// Schedules [targets] for building of prod artifacts while in a merge queue.

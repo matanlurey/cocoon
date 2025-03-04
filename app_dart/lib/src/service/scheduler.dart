@@ -13,6 +13,7 @@ import 'package:cocoon_service/src/service/build_status_provider.dart';
 import 'package:cocoon_service/src/service/exceptions.dart';
 import 'package:cocoon_service/src/service/get_files_changed.dart';
 import 'package:cocoon_service/src/service/luci_build_service/engine_artifacts.dart';
+import 'package:cocoon_service/src/service/luci_build_service/pending_task.dart';
 import 'package:cocoon_service/src/service/scheduler/policy.dart';
 import 'package:collection/collection.dart';
 import 'package:gcloud/db.dart';
@@ -181,40 +182,40 @@ class Scheduler {
       return;
     }
 
-    final CiYamlSet ciYaml = await getCiYaml(commit);
+    final targets = await _computePostsubmitTargetsForCommit(commit);
 
-    final List<Target> initialTargets = ciYaml.getInitialTargets(ciYaml.postsubmitTargets());
-    final isFusion = await fusionTester.isFusionBasedRef(commit.slug, commit.sha!);
-    if (isFusion) {
-      final fusionPostTargets = ciYaml.postsubmitTargets(type: CiType.fusionEngine);
-      final fusionInitialTargets = ciYaml.getInitialTargets(fusionPostTargets, type: CiType.fusionEngine);
-      initialTargets.addAll(fusionInitialTargets);
-      // Note on post submit targets: CiYaml filters out release_true for release branches and fusion trees
-    }
+    final toBeScheduled = <PendingTask>[];
+    for (final target in targets) {
+      final task = Task.fromTarget(commit: commit, target: target);
 
-    final List<Task> tasks = [...targetsToTasks(commit, initialTargets)];
-
-    final List<Tuple<Target, Task, int>> toBeScheduled = <Tuple<Target, Task, int>>[];
-    for (Target target in initialTargets) {
-      final Task task = tasks.singleWhere((Task task) => task.name == target.value.name);
-      SchedulerPolicy policy = target.schedulerPolicy;
       // Release branches should run every task
+      final SchedulerPolicy policy;
       if (Config.defaultBranch(commit.slug) != commit.branch) {
         policy = GuaranteedPolicy();
+      } else {
+        policy = target.schedulerPolicy;
       }
-      final int? priority = await policy.triggerPriority(task: task, datastore: datastore);
+
+      final priority = await policy.triggerPriority(task: task, datastore: datastore);
       if (priority != null) {
         // Mark task as in progress to ensure it isn't scheduled over
         task.status = Task.statusInProgress;
-        toBeScheduled.add(Tuple<Target, Task, int>(target, task, priority));
+        toBeScheduled.add(
+          PendingTask(
+            task: task,
+            target: target,
+            priority: priority,
+          ),
+        );
       }
     }
 
     // Datastore must be written to generate task keys
     try {
+      final tasks = targets.map((t) => Task.fromTarget(commit: commit, target: t)).toList();
       log.info('Datastore tasks created for $commit: ${tasks.map((t) => '"${t.name}"').join(', ')}');
-      await datastore.withTransaction<void>((Transaction transaction) async {
-        transaction.queueMutations(inserts: <Commit>[commit]);
+      await datastore.withTransaction((transaction) async {
+        transaction.queueMutations(inserts: [commit]);
         transaction.queueMutations(inserts: tasks);
         await transaction.commit();
         log.fine('Committed ${tasks.length} new tasks for commit ${commit.sha!}');
@@ -224,10 +225,10 @@ class Scheduler {
     }
 
     log.info(
-      'Firestore initial targets created for $commit: ${initialTargets.map((t) => '"${t.value.name}"').join(', ')}',
+      'Firestore initial targets created for $commit: ${targets.map((t) => '"${t.value.name}"').join(', ')}',
     );
     final firestore_commmit.Commit commitDocument = firestore_commmit.commitToCommitDocument(commit);
-    final List<firestore.Task> taskDocuments = firestore.targetsToTaskDocuments(commit, initialTargets);
+    final List<firestore.Task> taskDocuments = firestore.targetsToTaskDocuments(commit, targets);
     final List<Write> writes = documentsToWrites([...taskDocuments, commitDocument], exists: false);
     final FirestoreService firestoreService = await config.createFirestoreService();
     // TODO(keyonghan): remove try catch logic after validated to work.
@@ -237,22 +238,49 @@ class Scheduler {
       log.warning('Failed to add to Firestore: $error');
     }
 
-    log.info('Immediately scheduled tasks for $commit: ${toBeScheduled.map((t) => '"${t.second.name}"').join(', ')}');
+    log.info('Immediately scheduled tasks for $commit: ${toBeScheduled.map((t) => '"${t.task.name}"').join(', ')}');
     await _batchScheduleBuilds(commit, toBeScheduled);
     await _uploadToBigQuery(commit);
+  }
+
+  /// Given a [commit], returns postsubmit targets.
+  ///
+  /// The following fields in [commit] must be present:
+  /// - [Commit.sha];
+  /// - [Commit.repository].
+  Future<List<Target>> _computePostsubmitTargetsForCommit(Commit commit) async {
+    // Pre-conditions.
+    //
+    // If these were to fail, later steps would fail, so let's get a better error message.
+    if (commit.sha?.isEmpty ?? true) {
+      throw ArgumentError.value(commit, 'commit', 'Must provide commit.sha');
+    }
+    if (commit.repository?.isEmpty ?? true) {
+      throw ArgumentError.value(commit, 'commit', 'Must provide commit.repository');
+    }
+    final ciYaml = await getCiYaml(commit);
+    final initialTargets = ciYaml.getInitialTargets(ciYaml.postsubmitTargets());
+    final isFusion = await fusionTester.isFusionBasedRef(commit.slug, commit.sha!);
+    if (isFusion) {
+      final fusionPostTargets = ciYaml.postsubmitTargets(type: CiType.fusionEngine);
+      final fusionInitialTargets = ciYaml.getInitialTargets(fusionPostTargets, type: CiType.fusionEngine);
+      initialTargets.addAll(fusionInitialTargets);
+      // Note on post submit targets: CiYaml filters out release_true for release branches and fusion trees
+    }
+    return initialTargets;
   }
 
   /// Schedule all builds in batch requests instead of a single request.
   ///
   /// Each batch request contains [Config.batchSize] builds to be scheduled.
-  Future<void> _batchScheduleBuilds(Commit commit, List<Tuple<Target, Task, int>> toBeScheduled) async {
+  Future<void> _batchScheduleBuilds(Commit commit, List<PendingTask> toBeScheduled) async {
     final batchLog = StringBuffer(
       'Scheduling ${toBeScheduled.length} tasks in batches for ${commit.sha} as follows:\n',
     );
     final List<Future<void>> futures = <Future<void>>[];
     for (int i = 0; i < toBeScheduled.length; i += config.batchSize) {
       final batch = toBeScheduled.sublist(i, min(i + config.batchSize, toBeScheduled.length));
-      batchLog.writeln('  - ${batch.map((t) => '"${t.second.name}"').join(', ')}');
+      batchLog.writeln('  - ${batch.map((t) => '"${t.task.name}"').join(', ')}');
       futures.add(
         luciBuildService.schedulePostsubmitBuilds(
           commit: commit,
