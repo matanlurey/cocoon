@@ -13,7 +13,6 @@ import '../model/appengine/commit.dart';
 import '../model/appengine/task.dart';
 import '../model/ci_yaml/ci_yaml.dart';
 import '../model/ci_yaml/target.dart';
-import '../model/firestore/task.dart' as firestore;
 import '../request_handling/api_request_handler.dart';
 import '../request_handling/body.dart';
 import '../request_handling/exceptions.dart';
@@ -198,14 +197,12 @@ final class RerunProdTask extends ApiRequestHandler<Body> {
     }
 
     // Prepares Firestore task.
-    final firestoreTask = FirestoreTaskDocumentName(
-      commitSha: commitSha,
-      taskName: taskName,
-      currentAttempt: task.attempts!,
-    );
-    final taskDocument = await firestore.Task.fromFirestore(
-      firestoreService,
-      firestoreTask,
+    final taskDocument = await firestoreService.getTask(
+      FirestoreTaskDocumentName(
+        commitSha: commitSha,
+        taskName: taskName,
+        currentAttempt: task.attempts!,
+      ),
     );
 
     final isRerunning = await luciBuildService.checkRerunBuilder(

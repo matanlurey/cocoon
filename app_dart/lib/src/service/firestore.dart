@@ -9,6 +9,7 @@ import 'package:cocoon_server/google_auth_provider.dart';
 import 'package:github/github.dart';
 import 'package:googleapis/firestore/v1.dart';
 import 'package:http/http.dart' as http;
+import 'package:path/path.dart' as p;
 
 import '../../cocoon_service.dart';
 import '../model/firestore/commit.dart';
@@ -16,6 +17,7 @@ import '../model/firestore/github_build_status.dart';
 import '../model/firestore/github_gold_status.dart';
 import '../model/firestore/task.dart';
 import 'config.dart';
+import 'luci_build_service/firestore_task_document_name.dart';
 
 const String kDatabase =
     'projects/${Config.flutterGcpProjectId}/databases/${Config.flutterGcpFirestoreDatabase}';
@@ -67,6 +69,21 @@ class FirestoreService {
   Future<Document> getDocument(String name) async {
     final databasesDocumentsResource = await documentResource();
     return databasesDocumentsResource.get(name);
+  }
+
+  /// Lookup [Task] from Firestore.
+  ///
+  /// `documentName` follows `/projects/{project}/databases/{database}/documents/{document_path}`
+  Future<Task> getTask(FirestoreTaskDocumentName taskDocument) async {
+    final document = await getDocument(
+      p.posix.join(
+        kDatabase,
+        'documents',
+        kTaskCollectionId,
+        taskDocument.documentName,
+      ),
+    );
+    return Task.fromDocument(document);
   }
 
   /// Batch writes documents to Firestore.

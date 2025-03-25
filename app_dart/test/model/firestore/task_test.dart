@@ -8,13 +8,10 @@ import 'package:buildbucket/buildbucket_pb.dart' as bbv2;
 import 'package:cocoon_server_test/test_logging.dart';
 import 'package:cocoon_service/src/model/firestore/task.dart';
 import 'package:cocoon_service/src/service/firestore.dart';
-import 'package:cocoon_service/src/service/luci_build_service/firestore_task_document_name.dart';
 import 'package:googleapis/firestore/v1.dart';
-import 'package:mockito/mockito.dart';
 import 'package:test/test.dart';
 
 import '../../src/utilities/entity_generators.dart';
-import '../../src/utilities/mocks.dart';
 
 void main() {
   useTestLoggerPerTest();
@@ -85,35 +82,6 @@ void main() {
         expect(task.startTimestamp, startTimeDateTime.millisecondsSinceEpoch);
         expect(task.endTimestamp, endTimeDateTime.millisecondsSinceEpoch);
       });
-    });
-  });
-
-  // TODO(chillers): There is a bug where `dart test` does not work in offline mode.
-  // Need to file issue and get traces.
-  group('Task.fromFirestore', () {
-    late MockFirestoreService mockFirestoreService;
-
-    setUp(() {
-      mockFirestoreService = MockFirestoreService();
-    });
-
-    test('generates task correctly', () async {
-      final firestoreTask = generateFirestoreTask(1);
-      when(mockFirestoreService.getDocument(captureAny)).thenAnswer((
-        Invocation invocation,
-      ) {
-        return Future<Document>.value(firestoreTask);
-      });
-      final resultedTask = await Task.fromFirestore(
-        mockFirestoreService,
-        FirestoreTaskDocumentName(
-          commitSha: 'abc123',
-          taskName: 'test',
-          currentAttempt: 1,
-        ),
-      );
-      expect(resultedTask.name, firestoreTask.name);
-      expect(resultedTask.fields, firestoreTask.fields);
     });
   });
 

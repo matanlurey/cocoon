@@ -26,24 +26,6 @@ final class Task extends Document with BaseDocumentMixin {
   static const fieldStatus = 'status';
   static const fieldTestFlaky = 'testFlaky';
 
-  /// Lookup [Task] from Firestore.
-  ///
-  /// `documentName` follows `/projects/{project}/databases/{database}/documents/{document_path}`
-  static Future<Task> fromFirestore(
-    FirestoreService firestoreService,
-    FirestoreTaskDocumentName documentName,
-  ) async {
-    final document = await firestoreService.getDocument(
-      p.posix.join(
-        kDatabase,
-        'documents',
-        kTaskCollectionId,
-        documentName.documentName,
-      ),
-    );
-    return Task.fromDocument(document);
-  }
-
   factory Task({
     required String builderName,
     required int currentAttempt,

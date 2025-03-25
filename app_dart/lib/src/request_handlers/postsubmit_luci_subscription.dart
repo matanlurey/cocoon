@@ -93,8 +93,7 @@ class PostsubmitLuciSubscription extends SubscriptionHandler {
     log.info('Looking up task document: ${userData.firestoreTaskDocumentName}');
     final taskKey = Key<int>(commitKey, Task, int.parse(userData.taskKey));
     task = await datastore.lookupByValue<Task>(taskKey);
-    firestoreTask = await firestore.Task.fromFirestore(
-      firestoreService,
+    firestoreTask = await firestoreService.getTask(
       userData.firestoreTaskDocumentName,
     );
     log.info('Found $firestoreTask');
