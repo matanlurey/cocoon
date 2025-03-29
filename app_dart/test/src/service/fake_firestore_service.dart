@@ -42,14 +42,6 @@ final class FakeFirestoreService
   final mock = MockFirestoreService();
 
   @override
-  Future<BatchWriteResponse> batchWriteDocuments(
-    BatchWriteRequest request,
-    String database,
-  ) {
-    return mock.batchWriteDocuments(request, database);
-  }
-
-  @override
   Future<ProjectsDatabasesDocumentsResource> documentResource() {
     return mock.documentResource();
   }
@@ -167,7 +159,7 @@ final class FakeFirestoreService
 ///   inStorage(Task.metadata, hasLength(1)),
 /// );
 /// ```
-Matcher inStorage<T extends AppDocument<T>>(
+Matcher existsInStorage<T extends AppDocument<T>>(
   AppDocumentMetadata<T> metadata,
   Object? matcherOrCollection,
 ) {
@@ -191,118 +183,8 @@ final class _InStorage<T extends AppDocument<T>> extends Matcher {
       return false;
     }
     return matcher.matches(
-      item.api.documents
-          .where((d) => metadata.isPathTo(d.name!))
-          .map(metadata.fromDocument),
+      item.api.documents.where((d) => metadata.isPathTo(d.name!)),
       {},
     );
-  }
-}
-
-TaskMatcher isTask() => const TaskMatcher._(TypeMatcher<Task>());
-
-final class TaskMatcher extends Matcher {
-  const TaskMatcher._(this._delegate);
-  final TypeMatcher<Task> _delegate;
-
-  TaskMatcher attempts(Object? matcherOrAttempts) {
-    return TaskMatcher._(
-      _delegate.having(
-        (Task task) => task.attempts,
-        'attempts',
-        matcherOrAttempts,
-      ),
-    );
-  }
-
-  TaskMatcher status(Object? matcherOrStatus) {
-    return TaskMatcher._(
-      _delegate.having((Task task) => task.status, 'status', matcherOrStatus),
-    );
-  }
-
-  TaskMatcher commitSha(Object? matcherOrSha) {
-    return TaskMatcher._(
-      _delegate.having(
-        (Task task) => task.commitSha,
-        'commitSha',
-        matcherOrSha,
-      ),
-    );
-  }
-
-  TaskMatcher taskName(Object? matcherOrName) {
-    return TaskMatcher._(
-      _delegate.having((Task task) => task.taskName, 'taskName', matcherOrName),
-    );
-  }
-
-  TaskMatcher buildNumber(Object? matcherOrBuildNumber) {
-    return TaskMatcher._(
-      _delegate.having(
-        (Task task) => task.buildNumber,
-        'buildNumber',
-        matcherOrBuildNumber,
-      ),
-    );
-  }
-
-  @override
-  Description describe(Description description) {
-    return _delegate.describe(description);
-  }
-
-  @override
-  bool matches(Object? item, _) {
-    if (item is! Task) {
-      return false;
-    }
-    return _delegate.matches(item, {});
-  }
-}
-
-CommitMatcher isCommit() => const CommitMatcher._(TypeMatcher<Commit>());
-
-final class CommitMatcher extends Matcher {
-  const CommitMatcher._(this._delegate);
-  final TypeMatcher<Commit> _delegate;
-
-  CommitMatcher sha(Object? matcherOrSha) {
-    return CommitMatcher._(
-      _delegate.having((Commit commit) => commit.sha, 'sha', matcherOrSha),
-    );
-  }
-
-  CommitMatcher branch(Object? matcherOrBranch) {
-    return CommitMatcher._(
-      _delegate.having(
-        (Commit commit) => commit.branch,
-        'branch',
-        matcherOrBranch,
-      ),
-    );
-  }
-
-  CommitMatcher repositoryPath(Object? matcherOrRepository) {
-    return CommitMatcher._(
-      _delegate.having(
-        (Commit commit) => commit.repositoryPath,
-        'repositoryPath',
-        matcherOrRepository,
-      ),
-    );
-  }
-
-  @override
-  Description describe(Description description) {
-    return _delegate.describe(description);
-  }
-
-  @override
-  bool matches(Object? item, _) {
-    if (item is! Commit) {
-      return false;
-    }
-    return _delegate.matches(item, {});
   }
 }

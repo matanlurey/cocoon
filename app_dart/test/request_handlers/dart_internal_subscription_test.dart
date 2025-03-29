@@ -18,6 +18,7 @@ import 'package:mockito/mockito.dart';
 import 'package:test/test.dart';
 
 import '../src/datastore/fake_config.dart';
+import '../src/model/firestore_matcher.dart';
 import '../src/request_handling/fake_authentication.dart';
 import '../src/request_handling/fake_http.dart';
 import '../src/request_handling/subscription_tester.dart';
@@ -179,8 +180,8 @@ void main() {
 
     expect(
       firestoreService,
-      inStorage(firestore.Task.metadata, [
-        isTask().taskName(expectedTask.name).status(expectedTask.status),
+      existsInStorage(firestore.Task.metadata, [
+        isTask.hasTaskName(expectedTask.name).hasStatus(expectedTask.status),
       ]),
     );
   });
@@ -257,8 +258,8 @@ void main() {
     expect(taskInDb.toString(), equals(expectedTask.toString()));
     expect(
       firestoreService,
-      inStorage(firestore.Task.metadata, [
-        isTask().taskName(expectedTask.name).status(expectedTask.status),
+      existsInStorage(firestore.Task.metadata, [
+        isTask.hasTaskName(expectedTask.name).hasStatus(expectedTask.status),
       ]),
     );
   });

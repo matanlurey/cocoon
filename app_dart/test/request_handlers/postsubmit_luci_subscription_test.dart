@@ -18,6 +18,7 @@ import 'package:mockito/mockito.dart';
 import 'package:test/test.dart';
 
 import '../src/datastore/fake_config.dart';
+import '../src/model/firestore_matcher.dart';
 import '../src/request_handling/fake_authentication.dart';
 import '../src/request_handling/fake_http.dart';
 import '../src/request_handling/subscription_tester.dart';
@@ -166,8 +167,8 @@ void main() {
     // Firestore checks after API call.
     expect(
       firestoreService,
-      inStorage(firestore.Task.metadata, [
-        isTask().status(Task.statusSucceeded).buildNumber(63405),
+      existsInStorage(firestore.Task.metadata, [
+        isTask.hasStatus(Task.statusSucceeded).hasBuildNumber(63405),
       ]),
     );
   });
@@ -341,12 +342,12 @@ void main() {
 
     expect(
       firestoreService,
-      inStorage(firestore.Task.metadata, [
-        isTask()
-            .status(firestore.Task.statusInProgress)
-            .attempts(2)
-            .commitSha('87f88734747805589f2131753620d61b22922822')
-            .taskName('Linux A'),
+      existsInStorage(firestore.Task.metadata, [
+        isTask
+            .hasStatus(firestore.Task.statusInProgress)
+            .hasAttempts(2)
+            .hasCommitSha('87f88734747805589f2131753620d61b22922822')
+            .hasTaskName('Linux A'),
       ]),
     );
   });
@@ -397,12 +398,12 @@ void main() {
 
     expect(
       firestoreService,
-      inStorage(firestore.Task.metadata, [
-        isTask()
-            .status(firestore.Task.statusInProgress)
-            .attempts(2)
-            .commitSha('87f88734747805589f2131753620d61b22922822')
-            .taskName('Linux A'),
+      existsInStorage(firestore.Task.metadata, [
+        isTask
+            .hasStatus(firestore.Task.statusInProgress)
+            .hasAttempts(2)
+            .hasCommitSha('87f88734747805589f2131753620d61b22922822')
+            .hasTaskName('Linux A'),
       ]),
     );
   });
@@ -455,12 +456,12 @@ void main() {
 
       expect(
         firestoreService,
-        inStorage(firestore.Task.metadata, [
-          isTask()
-              .status(firestore.Task.statusInProgress)
-              .attempts(2)
-              .commitSha('87f88734747805589f2131753620d61b22922822')
-              .taskName('Linux A'),
+        existsInStorage(firestore.Task.metadata, [
+          isTask
+              .hasStatus(firestore.Task.statusInProgress)
+              .hasAttempts(2)
+              .hasCommitSha('87f88734747805589f2131753620d61b22922822')
+              .hasTaskName('Linux A'),
         ]),
       );
     },

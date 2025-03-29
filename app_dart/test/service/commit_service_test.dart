@@ -12,6 +12,7 @@ import 'package:mockito/mockito.dart';
 import 'package:test/test.dart';
 
 import '../src/datastore/fake_datastore.dart';
+import '../src/model/firestore_matcher.dart';
 import '../src/service/fake_firestore_service.dart';
 import '../src/utilities/entity_generators.dart';
 import '../src/utilities/mocks.mocks.dart';
@@ -102,11 +103,11 @@ void main() {
 
       expect(
         firestoreService,
-        inStorage(firestore.Commit.metadata, [
-          isCommit()
-              .sha(sha)
-              .branch(branch)
-              .repositoryPath('$owner/$repository'),
+        existsInStorage(firestore.Commit.metadata, [
+          isCommit
+              .hasSha(sha)
+              .hasBranch(branch)
+              .hasRepositoryPath('$owner/$repository'),
         ]),
       );
     });
