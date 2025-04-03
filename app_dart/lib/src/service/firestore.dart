@@ -4,7 +4,7 @@
 
 import 'dart:async';
 
-import 'package:cocoon_server/firestore.dart';
+import 'package:cocoon_server/access_client_provider.dart';
 import 'package:cocoon_server/google_auth_provider.dart';
 import 'package:github/github.dart';
 import 'package:googleapis/firestore/v1.dart' as g;
@@ -45,21 +45,22 @@ final kFieldMapRegExp = RegExp(
 class FirestoreService {
   /// Creates a [BigqueryService] using Google API authentication.
   static Future<FirestoreService> from(GoogleAuthProvider authProvider) async {
-    return FirestoreService._(
-      await Firestore.from(
-        authProvider,
+    final client = await authProvider.createClient(
+      scopes: const [g.FirestoreApi.datastoreScope],
+      baseClient: FirestoreBaseClient(
         projectId: Config.flutterGcpProjectId,
         databaseId: Config.flutterGcpFirestoreDatabase,
       ),
     );
+    return FirestoreService._(g.FirestoreApi(client));
   }
 
   const FirestoreService._(this._api);
-  final Firestore _api;
+  final g.FirestoreApi _api;
 
   /// Return a [ProjectsDatabasesDocumentsResource] with an authenticated [client]
   Future<g.ProjectsDatabasesDocumentsResource> documentResource() async {
-    return _api.apiDuringMigration.projects.databases.documents;
+    return _api.projects.databases.documents;
   }
 
   /// Gets a document based on name.

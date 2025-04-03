@@ -1974,6 +1974,12 @@ void main() {
           status: firestore.Task.statusInfraFailure,
         );
 
+        // Force the insert to fail.
+        {
+          final oldTask = generateFirestoreTask(1, attempts: 2);
+          firestoreService.failOnWrite(oldTask);
+        }
+
         firestoreCommit = generateFirestoreCommit(1);
         totCommit = generateCommit(1);
         config.db.values[totCommit.key] = totCommit;

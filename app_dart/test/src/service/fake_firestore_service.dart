@@ -116,6 +116,9 @@ mixin _FakeInMemoryFirestoreService implements FirestoreService {
     if (name == null) {
       throw ArgumentError.value(document, 'document', 'name must be set');
     }
+    if (_failOnWrite[name] case final exception?) {
+      throw exception;
+    }
     final existing = tryPeekDocument(name);
     if (existing == null) {
       _documents[name] = Document(
@@ -133,6 +136,18 @@ mixin _FakeInMemoryFirestoreService implements FirestoreService {
       updateTime: (updated ?? _now()).toUtc().toIso8601String(),
     );
     return false;
+  }
+
+  final _failOnWrite = <String, Exception>{};
+
+  /// Instructs the fake to throw an exception if [document] is written.
+  void failOnWrite(Document document, [DetailedApiRequestError? exception]) {
+    if (document.name == null) {
+      fail('Missing "name" field');
+    }
+    _failOnWrite[document.name!] =
+        exception ??
+        DetailedApiRequestError(500, 'Used failOnWrite(${document.name})');
   }
 
   @override

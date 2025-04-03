@@ -167,17 +167,12 @@ void main() {
     expect(task.endTimestamp, 1717430718072);
 
     // Firestore checks after API call.
-    final captured =
-        verify(
-          firestoreService.mock.batchWriteDocuments(captureAny, captureAny),
-        ).captured;
-    expect(captured.length, 2);
-    final batchWriteRequest = captured[0] as BatchWriteRequest;
-    expect(batchWriteRequest.writes!.length, 1);
-    final updatedDocument = batchWriteRequest.writes![0].update!;
-    expect(updatedDocument.name, firestoreTask!.name);
-    expect(firestoreTask!.status, Task.statusSucceeded);
-    expect(firestoreTask!.buildNumber, 63405);
+    final updated = firestore.Task.fromDocument(
+      firestoreService.tryPeekDocument(firestoreTask!.name!)!,
+    );
+    expect(updated.name, firestoreTask!.name);
+    expect(updated.status, Task.statusSucceeded);
+    expect(updated.buildNumber, 63405);
   });
 
   test('skips task processing when build is with scheduled status', () async {
