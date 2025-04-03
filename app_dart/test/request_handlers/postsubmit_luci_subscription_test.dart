@@ -125,6 +125,8 @@ void main() {
 
   test('updates task based on message', () async {
     firestoreTask = generateFirestoreTask(1, attempts: 2, name: 'Linux A');
+    firestoreService.putDocument(firestoreTask!);
+
     final commit = generateCommit(
       1,
       sha: '87f88734747805589f2131753620d61b22922822',
