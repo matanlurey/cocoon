@@ -2,9 +2,9 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+import 'package:cocoon_common/rpc_model.dart';
 import 'package:flutter/foundation.dart';
 
-import '../src/rpc_model.dart';
 import 'appengine_cocoon.dart';
 import 'dev_cocoon.dart';
 
@@ -69,7 +69,7 @@ abstract class CocoonService {
   });
 
   /// Force update Cocoon to get the latest commits.
-  Future<bool> vacuumGitHubCommits(String idToken);
+  Future<CocoonResponse<bool>> vacuumGitHubCommits(String idToken);
 }
 
 /// Wrapper class for data this state serves.
@@ -77,14 +77,18 @@ abstract class CocoonService {
 /// Holds [data] and possible error information.
 @immutable
 class CocoonResponse<T> {
-  const CocoonResponse.data(this.data) : error = null;
-  const CocoonResponse.error(this.error) : data = null;
+  const CocoonResponse.data(this.data, {this.statusCode = 200}) : error = null;
+  const CocoonResponse.error(this.error, {required this.statusCode})
+    : data = null;
 
   /// The data that gets used from [CocoonService].
   final T? data;
 
   /// Error information that can be used for debugging.
   final String? error;
+
+  /// Which HTTP status code was emitted.
+  final int statusCode;
 }
 
 /// This must be kept up to date with what's in app_dart/lib/src/service/config.dart.

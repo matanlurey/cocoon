@@ -5,11 +5,10 @@
 import 'dart:async';
 import 'dart:math' as math;
 
+import 'package:cocoon_common/rpc_model.dart';
 import 'package:flutter/material.dart';
 
 import '../logic/qualified_task.dart';
-import '../model/commit.pb.dart';
-import '../model/task.pb.dart';
 import '../state/build.dart';
 import 'luci_task_attempt_summary.dart';
 import 'now.dart';

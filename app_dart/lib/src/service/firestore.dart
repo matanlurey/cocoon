@@ -8,10 +8,8 @@ import 'package:cocoon_server/firestore.dart';
 import 'package:cocoon_server/google_auth_provider.dart';
 import 'package:github/github.dart';
 import 'package:googleapis/firestore/v1.dart' as g;
-import 'package:meta/meta.dart';
 
 import '../../cocoon_service.dart';
-import '../model/firestore/base.dart';
 import '../model/firestore/commit.dart';
 import '../model/firestore/github_build_status.dart';
 import '../model/firestore/github_gold_status.dart';
@@ -43,57 +41,8 @@ final kFieldMapRegExp = RegExp(
   '(${kRelationMapping.keys.join("|")})',
 );
 
-@visibleForTesting
-mixin FirestoreServiceMixin {
-  @protected
-  Firestore get api;
-
-  String _resolvePath<T extends AppDocument<T>>(T document) {
-    return api.resolvePath(document.metadata.relativePath(document));
-  }
-
-  /// Inserts a [document].
-  ///
-  /// If the document already exists, returns `null`, otherwise returns the
-  /// updated document.
-  ///
-  /// ## Example
-  ///
-  /// ```dart
-  /// await firestore.tryInsert(task);
-  /// ```
-  @useResult
-  Future<T?> tryInsert<T extends AppDocument<T>>(T document) async {
-    final inserted = await api.tryInsertByPath(
-      _resolvePath(document),
-      document,
-    );
-    if (inserted == null) {
-      return null;
-    }
-    return document.metadata.fromDocument(inserted);
-  }
-
-  /// Inserts a [document].
-  ///
-  /// The document must not already exist.
-  ///
-  /// ## Example
-  ///
-  /// ```dart
-  /// await firestore.insert(task);
-  /// ```
-  Future<T> insert<T extends AppDocument<T>>(T document) async {
-    final inserted = await api.insertByPath(_resolvePath(document), document);
-    return document.metadata.fromDocument(inserted);
-  }
-}
-
 /// An application-specific storage API around Google Firestore.
-///
-/// This API is in a state of flux, where the non-app specific APIs are being
-/// migrated to a common API (https://github.com/flutter/flutter/issues/165931).
-class FirestoreService with FirestoreServiceMixin {
+class FirestoreService {
   /// Creates a [BigqueryService] using Google API authentication.
   static Future<FirestoreService> from(GoogleAuthProvider authProvider) async {
     return FirestoreService._(
@@ -105,15 +54,12 @@ class FirestoreService with FirestoreServiceMixin {
     );
   }
 
-  const FirestoreService._(this.api);
-
-  @override
-  @protected
-  final Firestore api;
+  const FirestoreService._(this._api);
+  final Firestore _api;
 
   /// Return a [ProjectsDatabasesDocumentsResource] with an authenticated [client]
   Future<g.ProjectsDatabasesDocumentsResource> documentResource() async {
-    return api.apiDuringMigration.projects.databases.documents;
+    return _api.apiDuringMigration.projects.databases.documents;
   }
 
   /// Gets a document based on name.

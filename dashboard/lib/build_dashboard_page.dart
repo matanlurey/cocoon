@@ -4,6 +4,7 @@
 
 import 'dart:async';
 
+import 'package:cocoon_common/rpc_model.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_app_icons/flutter_app_icons.dart';
@@ -13,7 +14,6 @@ import 'package:url_launcher/url_launcher.dart';
 
 import 'dashboard_navigation_drawer.dart';
 import 'logic/task_grid_filter.dart';
-import 'model/commit.pb.dart';
 import 'service/cocoon.dart';
 import 'state/build.dart';
 import 'widgets/app_bar.dart';

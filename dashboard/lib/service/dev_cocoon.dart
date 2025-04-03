@@ -5,11 +5,8 @@
 import 'dart:async';
 import 'dart:math' as math;
 
-import 'package:fixnum/fixnum.dart';
+import 'package:cocoon_common/rpc_model.dart';
 
-import '../model/commit.pb.dart';
-import '../model/task.pb.dart';
-import '../src/rpc_model.dart';
 import '../widgets/task_box.dart';
 import 'cocoon.dart';
 
@@ -129,8 +126,11 @@ class DevelopmentCocoonService implements CocoonService {
   }
 
   @override
-  Future<bool> vacuumGitHubCommits(String idToken) async {
-    return false;
+  Future<CocoonResponse<bool>> vacuumGitHubCommits(String idToken) async {
+    return const CocoonResponse<bool>.error(
+      'Unable to vacuum against fake data. Try building the app to use prod data.',
+      statusCode: 501 /* Not implemented */,
+    );
   }
 
   @override
@@ -143,6 +143,7 @@ class DevelopmentCocoonService implements CocoonService {
   }) async {
     return const CocoonResponse<bool>.error(
       'Unable to retry against fake data. Try building the app to use prod data.',
+      statusCode: 501 /* Not implemented */,
     );
   }
 
@@ -156,6 +157,7 @@ class DevelopmentCocoonService implements CocoonService {
   }) async {
     return const CocoonResponse<void>.error(
       'Unable to schedule against fake data. Try building the app to use prod data.',
+      statusCode: 501 /* Not implemented */,
     );
   }
 
@@ -305,17 +307,19 @@ class DevelopmentCocoonService implements CocoonService {
     final message = commitTimestamp % 37 + author;
     final messageInc = _messagePrimes[message % _messagePrimes.length];
     return Commit(
-      author: _authors[author],
-      authorAvatarUrl:
-          'https://avatars2.githubusercontent.com/u/'
-          '${2148558 + author}?v=4',
+      author: CommitAuthor(
+        login: _authors[author],
+        avatarUrl:
+            'https://avatars2.githubusercontent.com/u/'
+            '${2148558 + author}?v=4',
+      ),
       message: List<String>.generate(
         6,
         (int i) => _words[(message + i * messageInc) % _words.length],
       ).join(' '),
       repository: 'flutter/$repo',
       sha: commitSha,
-      timestamp: Int64(commitTimestamp),
+      timestamp: commitTimestamp,
       branch: branch,
     );
   }
@@ -417,13 +421,13 @@ class DevelopmentCocoonService implements CocoonService {
         minAttempts + random.nextInt(maxAttempts - minAttempts + 1);
 
     return Task(
-      createTimestamp: Int64(commitTimestamp + index),
-      startTimestamp: Int64(commitTimestamp + (index * 1000 * 60)),
-      endTimestamp: Int64(
-        commitTimestamp + (index * 1000 * 60) + (index * 1000 * 60),
-      ),
+      createTimestamp: commitTimestamp + index,
+      startTimestamp: commitTimestamp + (index * 1000 * 60),
+      endTimestamp: commitTimestamp + (index * 1000 * 60) + (index * 1000 * 60),
+
       builderName: 'Linux_android $index',
       attempts: attempts,
+      buildNumberList: List.generate(attempts, (i) => i).join(','),
       isFlaky: index == now.millisecondsSinceEpoch % 13,
       status: status,
     );

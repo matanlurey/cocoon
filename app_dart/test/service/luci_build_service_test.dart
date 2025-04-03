@@ -20,7 +20,6 @@ import 'package:cocoon_service/src/model/github/checks.dart' as cocoon_checks;
 import 'package:cocoon_service/src/service/datastore.dart';
 import 'package:cocoon_service/src/service/exceptions.dart';
 import 'package:cocoon_service/src/service/luci_build_service/engine_artifacts.dart';
-import 'package:cocoon_service/src/service/luci_build_service/firestore_task_document_name.dart';
 import 'package:cocoon_service/src/service/luci_build_service/pending_task.dart';
 import 'package:cocoon_service/src/service/luci_build_service/user_data.dart';
 import 'package:fixnum/fixnum.dart';
@@ -1117,9 +1116,7 @@ void main() {
         PostsubmitUserData(
           commitKey: 'flutter/packages/main/1',
           taskKey: '1',
-          firestoreTaskDocumentName: FirestoreTaskDocumentName.parse(
-            '1_task1_1',
-          ),
+          firestoreTaskDocumentName: firestore.TaskId.parse('1_task1_1'),
           checkRunId: 1,
         ),
       );
@@ -1214,9 +1211,7 @@ void main() {
           PostsubmitUserData(
             commitKey: 'flutter/flutter/master/1',
             taskKey: '1',
-            firestoreTaskDocumentName: FirestoreTaskDocumentName.parse(
-              '0_task1_1',
-            ),
+            firestoreTaskDocumentName: firestore.TaskId.parse('0_task1_1'),
             checkRunId: 1,
           ),
         );
@@ -1305,9 +1300,7 @@ void main() {
           PostsubmitUserData(
             commitKey: 'flutter/flutter/master/1',
             taskKey: '1',
-            firestoreTaskDocumentName: FirestoreTaskDocumentName.parse(
-              '0_task1_1',
-            ),
+            firestoreTaskDocumentName: firestore.TaskId.parse('0_task1_1'),
             checkRunId: 1,
           ),
         );
@@ -1419,7 +1412,7 @@ void main() {
 
       final taskDocument = generateFirestoreTask(0);
       final task = generateTask(0);
-      expect(taskDocument.attempts, 1);
+      expect(taskDocument.currentAttempt, 1);
       expect(task.attempts, 1);
       await service.reschedulePostsubmitBuildUsingCheckRunEvent(
         checkRunEvent,
@@ -1430,7 +1423,7 @@ void main() {
         datastore: datastore,
         firestoreService: firestoreService,
       );
-      expect(taskDocument.attempts, 2);
+      expect(taskDocument.currentAttempt, 2);
       expect(task.attempts, 2);
       expect(pubsub.messages.length, 1);
     });
@@ -1491,9 +1484,7 @@ void main() {
           PostsubmitUserData(
             commitKey: 'flutter/packages/master/0',
             taskKey: '1',
-            firestoreTaskDocumentName: FirestoreTaskDocumentName.parse(
-              '0_task1_1',
-            ),
+            firestoreTaskDocumentName: firestore.TaskId.parse('0_task1_1'),
             checkRunId: null,
           ),
         );
@@ -1983,9 +1974,6 @@ void main() {
           status: firestore.Task.statusInfraFailure,
         );
 
-        // Insert the task attempt+1 ahead of time so that the insert fails.
-        await firestoreService.insert(generateFirestoreTask(1, attempts: 2));
-
         firestoreCommit = generateFirestoreCommit(1);
         totCommit = generateCommit(1);
         config.db.values[totCommit.key] = totCommit;
@@ -2099,7 +2087,7 @@ void main() {
         buildNumber: 1,
       );
       final target = generateTarget(1);
-      expect(firestoreTask!.attempts, 1);
+      expect(firestoreTask!.currentAttempt, 1);
       final rerunFlag = await service.checkRerunBuilder(
         commit: totCommit,
         task: task,
@@ -2109,15 +2097,15 @@ void main() {
         taskDocument: firestoreTask!,
       );
       expect(rerunFlag, isTrue);
-      expect(firestoreTask!.attempts, 2);
+      expect(firestoreTask!.currentAttempt, 2);
 
       final savedTask = firestore.Task.fromDocument(
-        await firestoreService.api.getByPath(
+        firestoreService.peekDocumentByPath(
           'tasks/${firestoreTask!.commitSha}_${firestoreTask!.taskName}_2',
         ),
       );
       expect(savedTask.status, firestore.Task.statusInProgress);
-      expect(savedTask.attempts, 2);
+      expect(savedTask.currentAttempt, 2);
     });
   });
 

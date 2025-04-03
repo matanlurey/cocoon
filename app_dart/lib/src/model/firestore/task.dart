@@ -7,16 +7,87 @@ library;
 
 import 'package:buildbucket/buildbucket_pb.dart' as bbv2;
 import 'package:googleapis/firestore/v1.dart' hide Status;
+import 'package:meta/meta.dart';
 import 'package:path/path.dart' as p;
 
 import '../../../cocoon_service.dart';
 import '../../request_handling/exceptions.dart';
 import '../../service/firestore.dart';
-import '../../service/luci_build_service/firestore_task_document_name.dart';
 import '../appengine/task.dart' as datastore;
 import 'base.dart';
 
 const String kTaskCollectionId = 'tasks';
+
+/// Represents the [documentName] of a Firestore document.
+@immutable
+final class TaskId extends AppDocumentId<Task> {
+  TaskId({
+    required this.commitSha,
+    required this.taskName,
+    required this.currentAttempt,
+  }) {
+    if (currentAttempt < 1) {
+      throw RangeError.value(
+        currentAttempt,
+        'currentAttempt',
+        'Must be at least 1',
+      );
+    }
+  }
+
+  /// Parse the inverse of [TaskId.documentName].
+  factory TaskId.parse(String documentName) {
+    final result = tryParse(documentName);
+    if (result == null) {
+      throw FormatException(
+        'Unexpected firestore task document name',
+        documentName,
+      );
+    }
+    return result;
+  }
+
+  /// Tries to parse the inverse of [TaskId.documentName].
+  ///
+  /// If could not be parsed, returns `null`.
+  static TaskId? tryParse(String documentName) {
+    if (_parseDocumentName.matchAsPrefix(documentName) case final match?) {
+      final commitSha = match.group(1)!;
+      final taskName = match.group(2)!;
+      final currentAttempt = int.tryParse(match.group(3)!);
+      if (currentAttempt != null) {
+        return TaskId(
+          commitSha: commitSha,
+          taskName: taskName,
+          currentAttempt: currentAttempt,
+        );
+      }
+    }
+    return null;
+  }
+
+  /// Parses `{commitSha}_{taskName}_{currentAttempt}`.
+  ///
+  /// This is gross because the [taskName] could also include underscores.
+  static final _parseDocumentName = RegExp(r'([a-z0-9]+)_(.*)_([0-9]+)$');
+
+  /// The commit SHA of the code being built.
+  final String commitSha;
+
+  /// The task name (i.e. from `.ci.yaml`).
+  final String taskName;
+
+  /// Which run (or re-run) attempt, starting at 1, this is.
+  final int currentAttempt;
+
+  @override
+  String get documentId {
+    return [commitSha, taskName, currentAttempt].join('_');
+  }
+
+  @override
+  AppDocumentMetadata<Task> get runtimeMetadata => Task.metadata;
+}
 
 /// Representation of each task (column) per _row_ on https://flutter-dashboard.appspot.com/#/build.
 ///
@@ -27,14 +98,9 @@ const String kTaskCollectionId = 'tasks';
 /// This documents layout is currently:
 /// ```
 ///  /projects/flutter-dashboard/databases/cocoon/commits/
-///    document: <this.commitSha>_<this.taskName>_<attempts>
-/// ```
+///    document: <this.commitSha>_<this.taskName>_<this.attempt>
 ///
-/// Note that the [attempts] field is _synthetic_, that is, there is no
-/// cooresponding concrete field on the document itself. We should probably fix
-/// that (https://github.com/flutter/flutter/issues/166229).
-///
-/// See also: [FirestoreTaskDocumentName].
+/// See also: [TaskId].
 final class Task extends Document with AppDocument<Task> {
   static const fieldBringup = 'bringup';
   static const fieldBuildNumber = 'buildNumber';
@@ -45,21 +111,39 @@ final class Task extends Document with AppDocument<Task> {
   static const fieldStartTimestamp = 'startTimestamp';
   static const fieldStatus = 'status';
   static const fieldTestFlaky = 'testFlaky';
+  static const fieldAttempt = 'attempt';
+
+  /// Returns a document ID for a task from the given parameters.
+  static AppDocumentId<Task> documentIdFor({
+    required String commitSha,
+    required String taskName,
+    required int currentAttempt,
+  }) {
+    return TaskId(
+      commitSha: commitSha,
+      taskName: taskName,
+      currentAttempt: currentAttempt,
+    );
+  }
+
+  @override
+  AppDocumentMetadata<Task> get runtimeMetadata => metadata;
+
+  /// Description of the document in Firestore.
+  static final metadata = AppDocumentMetadata<Task>(
+    collectionId: kTaskCollectionId,
+    fromDocument: Task.fromDocument,
+  );
 
   /// Lookup [Task] from Firestore.
   ///
   /// `documentName` follows `/projects/{project}/databases/{database}/documents/{document_path}`
   static Future<Task> fromFirestore(
     FirestoreService firestoreService,
-    FirestoreTaskDocumentName documentName,
+    AppDocumentId<Task> id,
   ) async {
     final document = await firestoreService.getDocument(
-      p.posix.join(
-        kDatabase,
-        'documents',
-        kTaskCollectionId,
-        documentName.documentName,
-      ),
+      p.posix.join(kDatabase, 'documents', kTaskCollectionId, id.documentId),
     );
     return Task.fromDocument(document);
   }
@@ -76,7 +160,7 @@ final class Task extends Document with AppDocument<Task> {
     required bool testFlaky,
     required int? buildNumber,
   }) {
-    final name = FirestoreTaskDocumentName(
+    final name = TaskId(
       taskName: builderName,
       currentAttempt: currentAttempt,
       commitSha: commitSha,
@@ -93,12 +177,13 @@ final class Task extends Document with AppDocument<Task> {
         fieldEndTimestamp: Value(integerValue: '$endTimestamp'),
         fieldStatus: Value(stringValue: status),
         fieldTestFlaky: Value(booleanValue: testFlaky),
+        fieldAttempt: Value(integerValue: '$currentAttempt'),
       },
       name: p.posix.join(
         kDatabase,
         'documents',
         kTaskCollectionId,
-        name.documentName,
+        name.documentId,
       ),
     );
   }
@@ -135,20 +220,6 @@ final class Task extends Document with AppDocument<Task> {
       ..fields = fields
       ..name = name;
   }
-
-  @override
-  late final metadata = AppDocumentMetadata<Task>(
-    collectionId: kTaskCollectionId,
-    documentName: (t) {
-      final id = FirestoreTaskDocumentName(
-        commitSha: commitSha!,
-        taskName: taskName!,
-        currentAttempt: attempts!,
-      );
-      return id.documentName;
-    },
-    fromDocument: Task.fromDocument,
-  );
 
   /// The task was cancelled.
   static const String statusCancelled = 'Cancelled';
@@ -203,7 +274,7 @@ final class Task extends Document with AppDocument<Task> {
   ///
   /// This is _not_ when the task first started running, as tasks start out in
   /// the 'New' state until they've been picked up by an [Agent].
-  int? get createTimestamp =>
+  int get createTimestamp =>
       int.parse(fields![fieldCreateTimestamp]!.integerValue!);
 
   /// The timestamp (in milliseconds since the Epoch) that this task started
@@ -211,27 +282,35 @@ final class Task extends Document with AppDocument<Task> {
   ///
   /// Tasks may be run more than once. If this task has been run more than
   /// once, this timestamp represents when the task was most recently started.
-  int? get startTimestamp =>
+  int get startTimestamp =>
       int.parse(fields![fieldStartTimestamp]!.integerValue!);
 
   /// The timestamp (in milliseconds since the Epoch) that this task last
   /// finished running.
-  int? get endTimestamp => int.parse(fields![fieldEndTimestamp]!.integerValue!);
+  int get endTimestamp => int.parse(fields![fieldEndTimestamp]!.integerValue!);
 
   /// The name of the task.
   ///
   /// This is a human-readable name, typically a test name (e.g.
   /// "hello_world__memory").
-  String? get taskName => fields![fieldName]!.stringValue!;
+  String get taskName => fields![fieldName]!.stringValue!;
 
   /// The sha of the task commit.
-  String? get commitSha => fields![fieldCommitSha]!.stringValue!;
+  String get commitSha => fields![fieldCommitSha]!.stringValue!;
 
   /// The number of attempts that have been made to run this task successfully.
   ///
   /// New tasks that have not yet been picked up by an [Agent] will have zero
   /// attempts.
-  int? get attempts => int.parse(name!.split('_').last);
+  int get currentAttempt {
+    // TODO(matanlurey): Simplify this when existing documents are backfilled.
+    if (fields!.containsKey(fieldAttempt)) {
+      return int.parse(fields![fieldAttempt]!.integerValue!);
+    }
+
+    // Read the attempts from the document name.
+    return TaskId.parse(name!).currentAttempt;
+  }
 
   /// Whether this task has been marked flaky by .ci.yaml.
   ///
@@ -240,7 +319,7 @@ final class Task extends Document with AppDocument<Task> {
   ///  * <https://github.com/flutter/flutter/blob/master/.ci.yaml>
   ///
   /// A flaky (`bringup: true`) task will not block the tree.
-  bool? get bringup => fields![fieldBringup]!.booleanValue!;
+  bool get bringup => fields![fieldBringup]!.booleanValue!;
 
   /// Whether the test execution of this task shows flake.
   ///
@@ -248,7 +327,7 @@ final class Task extends Document with AppDocument<Task> {
   ///
   /// See also:
   ///  * <https://github.com/flutter/flutter/blob/master/dev/devicelab/lib/framework/runner.dart>
-  bool? get testFlaky => fields![fieldTestFlaky]!.booleanValue!;
+  bool get testFlaky => fields![fieldTestFlaky]!.booleanValue!;
 
   /// The build number of luci build: https://chromium.googlesource.com/infra/luci/luci-go/+/master/buildbucket/proto/build.proto#146
   int? get buildNumber =>
@@ -316,6 +395,7 @@ final class Task extends Document with AppDocument<Task> {
       fieldStatus: Value(stringValue: Task.statusNew),
       fieldTestFlaky: Value(booleanValue: false),
       fieldCommitSha: Value(stringValue: commitSha),
+      fieldAttempt: Value(integerValue: '$attempt'),
     };
   }
 

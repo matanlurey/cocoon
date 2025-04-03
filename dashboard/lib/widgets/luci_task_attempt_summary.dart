@@ -3,10 +3,9 @@
 // found in the LICENSE file.
 
 import 'package:cocoon_common/is_dart_internal.dart';
+import 'package:cocoon_common/rpc_model.dart';
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
-
-import '../model/task.pb.dart';
 
 /// Show information regarding each attempt for a luci Task.
 ///

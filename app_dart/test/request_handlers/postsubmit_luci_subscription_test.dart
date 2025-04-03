@@ -10,7 +10,6 @@ import 'package:cocoon_service/src/model/firestore/commit.dart'
     as firestore_commit;
 import 'package:cocoon_service/src/model/firestore/task.dart' as firestore;
 import 'package:cocoon_service/src/service/datastore.dart';
-import 'package:cocoon_service/src/service/luci_build_service/firestore_task_document_name.dart';
 import 'package:cocoon_service/src/service/luci_build_service/user_data.dart';
 import 'package:fixnum/fixnum.dart';
 import 'package:googleapis/firestore/v1.dart';
@@ -143,7 +142,7 @@ void main() {
         checkRunId: null,
         taskKey: '${task.key.id}',
         commitKey: '${task.key.parent?.id}',
-        firestoreTaskDocumentName: FirestoreTaskDocumentName(
+        firestoreTaskDocumentName: firestore.TaskId(
           commitSha: commit.sha!,
           taskName: task.name!,
           currentAttempt: task.attempts!,
@@ -208,7 +207,7 @@ void main() {
         checkRunId: null,
         taskKey: '${task.key.id}',
         commitKey: '${task.key.parent?.id}',
-        firestoreTaskDocumentName: FirestoreTaskDocumentName(
+        firestoreTaskDocumentName: firestore.TaskId(
           commitSha: commit.sha!,
           taskName: task.name!,
           currentAttempt: task.attempts!,
@@ -217,7 +216,7 @@ void main() {
     );
 
     expect(firestoreTask!.status, firestore.Task.statusInProgress);
-    expect(firestoreTask!.attempts, 1);
+    expect(firestoreTask!.currentAttempt, 1);
     expect(await tester.post(handler), Body.empty);
     expect(firestoreTask!.status, firestore.Task.statusInProgress);
   });
@@ -249,7 +248,7 @@ void main() {
         checkRunId: null,
         taskKey: '${task.key.id}',
         commitKey: '${task.key.parent?.id}',
-        firestoreTaskDocumentName: FirestoreTaskDocumentName(
+        firestoreTaskDocumentName: firestore.TaskId(
           commitSha: commit.sha!,
           taskName: task.name!,
           currentAttempt: task.attempts!,
@@ -286,7 +285,7 @@ void main() {
       checkRunId: null,
       taskKey: '${task.key.id}',
       commitKey: '${task.key.parent?.id}',
-      firestoreTaskDocumentName: FirestoreTaskDocumentName(
+      firestoreTaskDocumentName: firestore.TaskId(
         commitSha: commit.sha!,
         taskName: task.name!,
         currentAttempt: task.attempts!,
@@ -336,7 +335,7 @@ void main() {
         checkRunId: null,
         taskKey: '${task.key.id}',
         commitKey: '${task.key.parent?.id}',
-        firestoreTaskDocumentName: FirestoreTaskDocumentName(
+        firestoreTaskDocumentName: firestore.TaskId(
           commitSha: commit.sha!,
           taskName: task.name!,
           currentAttempt: task.attempts!,
@@ -345,16 +344,16 @@ void main() {
     );
 
     expect(firestoreTask!.status, firestore.Task.statusFailed);
-    expect(firestoreTask!.attempts, 1);
+    expect(firestoreTask!.currentAttempt, 1);
     expect(await tester.post(handler), Body.empty);
 
     final savedTask = firestore.Task.fromDocument(
-      await firestoreService.api.getByPath(
+      firestoreService.peekDocumentByPath(
         'tasks/${firestoreTask!.commitSha}_${firestoreTask!.taskName}_2',
       ),
     );
     expect(savedTask.status, firestore.Task.statusInProgress);
-    expect(savedTask.attempts, 2);
+    expect(savedTask.currentAttempt, 2);
   });
 
   test('on canceled builds auto-rerun the build if they timed out', () async {
@@ -389,7 +388,7 @@ void main() {
         checkRunId: null,
         taskKey: '${task.key.id}',
         commitKey: '${task.key.parent?.id}',
-        firestoreTaskDocumentName: FirestoreTaskDocumentName(
+        firestoreTaskDocumentName: firestore.TaskId(
           commitSha: commit.sha!,
           taskName: task.name!,
           currentAttempt: task.attempts!,
@@ -398,16 +397,16 @@ void main() {
     );
 
     expect(firestoreTask!.status, firestore.Task.statusInfraFailure);
-    expect(firestoreTask!.attempts, 1);
+    expect(firestoreTask!.currentAttempt, 1);
     expect(await tester.post(handler), Body.empty);
 
     final savedTask = firestore.Task.fromDocument(
-      await firestoreService.api.getByPath(
+      firestoreService.peekDocumentByPath(
         'tasks/${firestoreTask!.commitSha}_${firestoreTask!.taskName}_2',
       ),
     );
     expect(savedTask.status, firestore.Task.statusInProgress);
-    expect(savedTask.attempts, 2);
+    expect(savedTask.currentAttempt, 2);
   });
 
   test(
@@ -444,7 +443,7 @@ void main() {
           checkRunId: null,
           taskKey: '${task.key.id}',
           commitKey: '${task.key.parent?.id}',
-          firestoreTaskDocumentName: FirestoreTaskDocumentName(
+          firestoreTaskDocumentName: firestore.TaskId(
             commitSha: commit.sha!,
             taskName: task.name!,
             currentAttempt: task.attempts!,
@@ -457,12 +456,12 @@ void main() {
       expect(await tester.post(handler), Body.empty);
 
       final savedTask = firestore.Task.fromDocument(
-        await firestoreService.api.getByPath(
+        firestoreService.peekDocumentByPath(
           'tasks/${firestoreTask!.commitSha}_${firestoreTask!.taskName}_2',
         ),
       );
       expect(savedTask.status, firestore.Task.statusInProgress);
-      expect(savedTask.attempts, 2);
+      expect(savedTask.currentAttempt, 2);
     },
   );
 
@@ -499,7 +498,7 @@ void main() {
         checkRunId: 1,
         taskKey: '${task.key.id}',
         commitKey: '${task.key.parent?.id}',
-        firestoreTaskDocumentName: FirestoreTaskDocumentName(
+        firestoreTaskDocumentName: firestore.TaskId(
           commitSha: commit.sha!,
           taskName: task.name!,
           currentAttempt: task.attempts!,
@@ -549,7 +548,7 @@ void main() {
         checkRunId: null,
         taskKey: '${task.key.id}',
         commitKey: '${task.key.parent?.id}',
-        firestoreTaskDocumentName: FirestoreTaskDocumentName(
+        firestoreTaskDocumentName: firestore.TaskId(
           commitSha: commit.sha!,
           taskName: task.name!,
           currentAttempt: task.attempts!,
@@ -604,7 +603,7 @@ void main() {
         checkRunId: null,
         taskKey: '${task.key.id}',
         commitKey: '${task.key.parent?.id}',
-        firestoreTaskDocumentName: FirestoreTaskDocumentName(
+        firestoreTaskDocumentName: firestore.TaskId(
           commitSha: commit.sha!,
           taskName: task.name!,
           currentAttempt: task.attempts!,

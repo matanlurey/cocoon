@@ -4,16 +4,14 @@
 
 import 'dart:async';
 
+import 'package:cocoon_common/rpc_model.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_app_icons/flutter_app_icons.dart';
 
 import '../logic/brooks.dart';
-import '../model/commit.pb.dart';
-import '../model/task.pb.dart';
 import '../service/cocoon.dart';
 import '../service/google_authentication.dart';
-import '../src/rpc_model.dart';
 
 /// State for the Flutter Build Dashboard.
 class BuildState extends ChangeNotifier {
@@ -360,14 +358,17 @@ class BuildState extends ChangeNotifier {
     if (!authService.isAuthenticated) {
       return false;
     }
-    final successful = await cocoonService.vacuumGitHubCommits(
+    final response = await cocoonService.vacuumGitHubCommits(
       await authService.idToken,
     );
-    if (!successful) {
-      _errors.send(errorMessageRefreshGitHubCommits);
-      await authService.clearUser();
+    if (response.error != null) {
+      _errors.send('$errorMessageRefreshGitHubCommits: ${response.error}');
+      if (response.statusCode == 401 /* Unauthorized */ ) {
+        await authService.clearUser();
+      }
+      return false;
     }
-    return successful;
+    return true;
   }
 
   Future<bool> rerunTask(Task task, Commit commit) async {
@@ -383,7 +384,9 @@ class BuildState extends ChangeNotifier {
     );
     if (response.error != null) {
       _errors.send('$errorMessageRerunTasks: ${response.error}');
-      await authService.clearUser();
+      if (response.statusCode == 401 /* Unauthorized */ ) {
+        await authService.clearUser();
+      }
       return false;
     }
     return true;

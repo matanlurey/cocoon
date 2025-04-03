@@ -101,7 +101,7 @@ void main() {
       expect(commit.branch, branch);
 
       final insertedCommit = firestore.Commit.fromDocument(
-        await firestoreService.api.getByPath('commits/${commit.sha}'),
+        firestoreService.peekDocumentByPath('commits/${commit.sha}'),
       );
       expect(insertedCommit.sha, commit.sha);
     });
