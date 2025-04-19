@@ -6,7 +6,6 @@ import 'dart:async';
 
 import 'package:buildbucket/buildbucket_pb.dart' as bbv2;
 import 'package:cocoon_server/logging.dart';
-import 'package:gcloud/db.dart';
 import 'package:github/github.dart' as gh;
 import 'package:googleapis/firestore/v1.dart';
 import 'package:meta/meta.dart';
@@ -139,10 +138,14 @@ final class VacuumStaleTasks extends RequestHandler<Body> {
     final datastore = DatastoreService.defaultProvider(config.db);
     final tasks = <ds.Task>[];
     for (final intent in toUpdate) {
-      final commitKey = _toCommitKey(datastore.db, intent.commit);
       final task = await ds.Task.fromCommitKey(
         datastore: datastore,
-        commitKey: commitKey,
+        commitKey: ds.Commit.createKey(
+          db: datastore.db,
+          slug: intent.commit.slug,
+          gitBranch: intent.commit.branch,
+          sha: intent.commit.sha,
+        ),
         name: intent.task.taskName,
       );
       switch (intent) {
@@ -154,13 +157,6 @@ final class VacuumStaleTasks extends RequestHandler<Body> {
       tasks.add(task);
     }
     await datastore.insert(tasks);
-  }
-
-  static Key<String> _toCommitKey(DatastoreDB db, fs.Commit commit) {
-    return db.emptyKey.append<String>(
-      ds.Commit,
-      id: '${commit.slug.fullName}/${commit.branch}/${commit.sha}',
-    );
   }
 }
 
